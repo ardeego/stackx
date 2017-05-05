@@ -1,0 +1,17 @@
+{
+    "mysql": {
+        "host": "localhost",
+        "user": "stackx",
+        "passwd": "",
+        "secure_file_priv": "/Volumes/SAM1-SSD/stackoverflow/fifo"
+    },
+
+    "7z": {
+        "cmd": "/usr/local/bin/7za",
+    },
+
+    "dump": {
+        "dir": "/Volumes/SAM1-SSD/stackoverflow"
+    }
+}
+
