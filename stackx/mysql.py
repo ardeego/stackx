@@ -1,15 +1,15 @@
 """A lightweight wrapper for MySQLdb connections."""
-
+import os
 import MySQLdb
 import logging
-from contextlib import closing
+from .archive import Archive7z
 
 log = logging.getLogger(__name__)
 
 class Connection(object):
     """A lightweight wrapper for MySQLdb connections."""
 
-    cnx = None
+    conn = None
 
     def __init__(self, host=None, user=None, passwd=None, db="", charset="utf8",
                  autocommit=True, config=None, **kwargs):
@@ -65,39 +65,152 @@ class Connection(object):
         self.close()
 
     def reconnect(self):
-        """(Re-)connect to data base.
-
-        Returns:
-
-        """
+        """(Re-)connect to data base."""
         self.close()
         try:
-            self.cnx = MySQLdb.connect(**self._args)
-            self.cnx.autocommit(self._autocommit)
+            self.conn = MySQLdb.connect(**self._args)
+            self.conn.autocommit(self._autocommit)
         except MySQLdb.Error as e:
             log.error("Failed to establish connection to MySQL on %s", self.host,
                       exc_info=True)
 
     def close(self):
-        """Close connection to the stackexchange database.
+        """Close connection to the stackexchange database."""
+        if self.conn:
+            self.conn.join()
+            self.conn = None
 
-        Returns:
+    def import_7z_archive(self, filename, dbname=None):
+        """Import stackexchange.com database from 7z archive"""
+        if not dbname:
+            _, dbname  = os.path.split(filename)
+            dbname  = os.path.split(dbname)
 
-        """
-        if self.cnx:
-            self.cnx.join()
-            self.cnx = None
 
+        archive = Archive7z(filename)
+        for xfilename in archive.list_files("xml"):
+            pipename = archive.extract(xfilename, outdir=self.secure_file_priv , pipe=True)
 
-    def import_xml(self, xml_file_name):
-        """Import xml dump file tor stackexchange table.
+    def import_xml_table(self, xml_filename):
+        """Import xml table dump file.
 
         Args:
             xml_file_name (str): filename of xml files
+        """
+        if xml_filename:
+            if not self.db:
+                #self.db =
+                pass
+
+    def iter(self, query, *parameters, **kwparameters):
+        """Return an iterator for the given query and parameters."""
+        cursor = self.conn.cursor()
+        try:
+            self._execute(cursor, query, parameters, kwparameters)
+            column_names = [d[0] for d in cursor.description]
+            for row in cursor:
+                yield Row(zip(column_names, row))
+        finally:
+            cursor.close()
+
+    def query(self, query, *parameters, **kwparameters):
+        """Return a row list for the given query and parameters."""
+        cursor = self.conn.cursor()
+        try:
+            self._execute(cursor, query, parameters, kwparameters)
+            column_names = [d[0] for d in cursor.description]
+            return [Row(zip(column_names, row)) for row in cursor]
+        finally:
+            cursor.close()
+
+    def get_one(self, query, *parameters, **kwparameters):
+        """Return the (singular) row returned by the given query.
+
+        Note:
+            If the query has no results, returns None.
+            For more than more than one result, raises an exception.
+        """
+        rows = self.query(query, *parameters, **kwparameters)
+        if not rows:
+            return None
+        elif len(rows) > 1:
+            raise Exception("Multiple rows returned for Database.get() query")
+        else:
+            return rows[0]
+
+    # rowcount is a more reasonable default return value than lastrowid,
+    # but for historical compatibility execute() must return lastrowid.
+    def execute(self, query, *parameters, **kwparameters):
+        """Execute the given query, returning the lastrowid from the query."""
+        return self.execute_lastrowid(query, *parameters, **kwparameters)
+
+    def execute_lastrowid(self, query, *parameters, **kwparameters):
+        """Execute the given query, returning the lastrowid from the query."""
+        cursor = self.conn.cursor()
+        try:
+            self._execute(cursor, query, parameters, kwparameters)
+            return cursor.lastrowid
+        finally:
+            cursor.close()
+
+    def execute_rowcount(self, query, *parameters, **kwparameters):
+        """Execute the given query, returning the rowcount from the query."""
+        cursor = self.conn.cursor()
+        try:
+            self._execute(cursor, query, parameters, kwparameters)
+            return cursor.rowcount
+        finally:
+            cursor.close()
+
+    def executemany(self, query, parameters):
+        """Execute the given query against all the given param sequences.
 
         Returns:
-
+           lastrowid from the query
         """
-        if xml_file_name:
-            if not self.db:
-                pass
+        return self.executemany_lastrowid(query, parameters)
+
+    def executemany_lastrowid(self, query, parameters):
+        """Execute the given query against all the given param sequences.
+
+        Returns:
+            lastrowid from the query
+        """
+        cursor = self.conn.cursor()
+        try:
+            cursor.executemany(query, parameters)
+            return cursor.lastrowid
+        finally:
+            cursor.close()
+
+    def executemany_rowcount(self, query, parameters):
+        """Execute the given query against all the given param sequences.
+
+        Returns:
+            rowcount from the query
+        """
+        cursor = self.conn.cursor()
+        try:
+            cursor.executemany(query, parameters)
+            return cursor.rowcount
+        finally:
+            cursor.close()
+
+    def _execute(self, cursor, query, parameters, kwparameters):
+        try:
+            return cursor.execute(query, kwparameters or parameters)
+        except MySQLdb.OperationalError:
+            logging.error("Error connecting to MySQL on %s", self.host)
+            self.close()
+            raise
+
+
+class Row(dict):
+    """A dict that allows for object-like property access syntax."""
+
+    def __getattr__(self, name):
+        """Return named field."""
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(name)

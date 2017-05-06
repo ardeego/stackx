@@ -8,7 +8,9 @@ def main():
     print(config)
 
     #Connect to database
-    sxdb = sx.Connection(config=config["mysql"])
+    db = sx.Connection(config=config["mysql"])
+    query = """ SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = 'information_schema';"""
+    y = db.query(query)
 
     a = sx.Archive7z("/Users/ardeego/repos/stackx/tests/data/test.stackexchange.com.7z")
 

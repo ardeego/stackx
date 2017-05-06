@@ -7,7 +7,7 @@
     },
 
     "7z": {
-        "cmd": "/usr/local/bin/7za",
+        "cmd": "/usr/local/bin/7z"
     },
 
     "dump": {

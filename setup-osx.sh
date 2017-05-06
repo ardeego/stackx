@@ -11,3 +11,4 @@ mysql -u root -p
 FLUSH PRIVILEGES;
 ALTER USER 'root'@'localhost' IDENTIFIED BY 'YOUR-PW'
 CREATE USER 'stackx'@'localhost' IDENTIFIED BY 'YOUR-PW';
+GRANT ALL PRIVILEGES ON * . * TO 'stackx'@'localhost';
